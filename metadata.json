@@ -1,0 +1,8 @@
+{
+  "name": "O Poço Ancestral: Reconstrução e Descida",
+  "description": "Reconstrua uma antiga vila de mineração ao redor de um poço ancestral, contrate trabalhadores, forje equipamentos e desça as sete masmorras para resgatar o medalhão perdido do seu avô.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
