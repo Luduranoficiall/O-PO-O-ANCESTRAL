@@ -1,29 +1,34 @@
 import React from 'react';
 import { GameState, DecreeId } from '../types/game';
-import { VILLAGE_DECREES } from '../data/gameData';
+import { VILLAGE_DECREES, DIFFICULTY_CONFIGS } from '../data/gameData';
 import { audio } from '../utils/audio';
 
 interface ExecutiveDashboardModalProps {
   gameState: GameState;
   onClose: () => void;
   onToggleDecree: (decreeId: DecreeId) => void;
+  onOpenDifficultyModal?: () => void;
 }
 
 export const ExecutiveDashboardModal: React.FC<ExecutiveDashboardModalProps> = ({
   gameState,
   onClose,
   onToggleDecree,
+  onOpenDifficultyModal,
 }) => {
   const { resources, workers, tools, activeDecrees, warehouseCapacity, stats } = gameState;
+  const currentDiffConfig = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
 
   // Calculate real throughput (per minute)
   const isNightShift = activeDecrees.includes('night_shift');
   const isHeavyRations = activeDecrees.includes('heavy_rations');
 
-  const woodBonus = (tools.axeTier === 2 ? 1.45 : tools.axeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * (isHeavyRations ? 1.25 : 1.0);
-  const stoneBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * (isHeavyRations ? 1.25 : 1.0);
-  const ironBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0);
-  const crystalBonus = (isNightShift ? 1.3 : 1.0);
+  const diffResourceMult = currentDiffConfig.resourceYieldMult;
+
+  const woodBonus = (tools.axeTier === 2 ? 1.45 : tools.axeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * (isHeavyRations ? 1.25 : 1.0) * diffResourceMult;
+  const stoneBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * (isHeavyRations ? 1.25 : 1.0) * diffResourceMult;
+  const ironBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * diffResourceMult;
+  const crystalBonus = (isNightShift ? 1.3 : 1.0) * diffResourceMult;
 
   // Per minute rates (each 2.5s tick runs 24 times/minute)
   const woodPerMin = Math.round((workers.woodcutter || 0) * 1.5 * woodBonus * 24);
@@ -155,6 +160,41 @@ export const ExecutiveDashboardModal: React.FC<ExecutiveDashboardModalProps> = (
               <span>·</span>
               <span>Monstros Vencidos: <strong className="text-red-400">{stats.monstersDefeated}</strong></span>
             </div>
+          </div>
+
+          {/* Strategic Difficulty & Risk Management Card */}
+          <div className="bg-[#201812] p-4 rounded-xl border border-amber-900/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-cinzel text-sm font-semibold text-amber-200 block">
+                  Regime Operacional do Poço:
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded text-xs font-bold border"
+                  style={{
+                    color: currentDiffConfig.color,
+                    borderColor: `${currentDiffConfig.color}66`,
+                    backgroundColor: `${currentDiffConfig.color}15`,
+                  }}
+                >
+                  {currentDiffConfig.badge}
+                </span>
+                <span className="text-[11px] text-stone-400">({currentDiffConfig.tagline})</span>
+              </div>
+              <p className="text-xs text-stone-300">
+                {currentDiffConfig.description}
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                audio.playClick();
+                onOpenDifficultyModal?.();
+              }}
+              className="px-3.5 py-1.5 bg-amber-800/40 hover:bg-amber-700/60 border border-amber-600/50 text-amber-200 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+            >
+              ⚙️ Ajustar Dificuldade
+            </button>
           </div>
 
           {/* 3. Community Decrees & Management Policies */}

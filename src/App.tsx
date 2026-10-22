@@ -7,8 +7,16 @@ import {
   PlacedBuilding,
   PotionType,
   DecreeId,
+  DifficultyLevel,
 } from './types/game';
-import { INITIAL_GAME_STATE, BUILDINGS_INFO, WORKERS_INFO, PIONEER_SPECIALISTS, POTIONS_INFO } from './data/gameData';
+import {
+  INITIAL_GAME_STATE,
+  BUILDINGS_INFO,
+  WORKERS_INFO,
+  PIONEER_SPECIALISTS,
+  POTIONS_INFO,
+  DIFFICULTY_CONFIGS,
+} from './data/gameData';
 import { VillageCanvas } from './components/VillageCanvas';
 import { DungeonViewer } from './components/DungeonViewer';
 import { ForgeModal } from './components/ForgeModal';
@@ -23,6 +31,7 @@ import { GeminiImageModal } from './components/GeminiImageModal';
 import { ExecutiveDashboardModal } from './components/ExecutiveDashboardModal';
 import { TavernModal } from './components/TavernModal';
 import { AlchemyLabModal } from './components/AlchemyLabModal';
+import { DifficultyModal } from './components/DifficultyModal';
 import { audio } from './utils/audio';
 
 const STORAGE_KEY = 'ancestral_well_save_v1';
@@ -43,6 +52,7 @@ export default function App() {
   const [showExecutiveDashboard, setShowExecutiveDashboard] = useState(false);
   const [showTavern, setShowTavern] = useState(false);
   const [showAlchemyLab, setShowAlchemyLab] = useState(false);
+  const [showDifficultyModal, setShowDifficultyModal] = useState(false);
 
   // Building placement on canvas
   const [buildingToPlace, setBuildingToPlace] = useState<BuildingType | null>(null);
@@ -179,10 +189,13 @@ export default function App() {
         const specIron = hiredSpecialistIds.includes('specialist_kaz') ? 1.25 : 1.0;
         const specCrystal = hiredSpecialistIds.includes('specialist_sari') ? 1.25 : 1.0;
 
-        const woodBonus = (tools.axeTier === 2 ? 1.45 : tools.axeTier === 3 ? 1.8 : 1.2) * decreeMultiplier * specWood;
-        const stoneBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * decreeMultiplier * specStone;
-        const ironBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * specIron;
-        const crystalBonus = (isNightShift ? 1.3 : 1.0) * specCrystal;
+        const diffCfg = DIFFICULTY_CONFIGS[prev.difficulty || 'medium'];
+        const diffResourceMult = diffCfg.resourceYieldMult;
+
+        const woodBonus = (tools.axeTier === 2 ? 1.45 : tools.axeTier === 3 ? 1.8 : 1.2) * decreeMultiplier * specWood * diffResourceMult;
+        const stoneBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * decreeMultiplier * specStone * diffResourceMult;
+        const ironBonus = (tools.pickaxeTier === 2 ? 1.45 : tools.pickaxeTier === 3 ? 1.8 : 1.2) * (isNightShift ? 1.3 : 1.0) * specIron * diffResourceMult;
+        const crystalBonus = (isNightShift ? 1.3 : 1.0) * specCrystal * diffResourceMult;
         const skillBonus = unlockedSkills.includes('worker_morale') ? 1.3 : 1.0;
 
         const woodRate = (workers.woodcutter || 0) * 1.5 * woodBonus * skillBonus;
@@ -556,6 +569,14 @@ export default function App() {
     });
   };
 
+  // Change Difficulty Level (Fácil, Médio, Difícil, Hard, Hard Master)
+  const handleSelectDifficulty = (difficulty: DifficultyLevel) => {
+    setGameState((prev) => ({
+      ...prev,
+      difficulty,
+    }));
+  };
+
   // Toggle Executive Decree
   const handleToggleDecree = (decreeId: DecreeId) => {
     setGameState((prev) => {
@@ -782,6 +803,26 @@ export default function App() {
             descida às sete masmorras do poço.
           </p>
 
+          {/* Difficulty Selector on Title Screen */}
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs text-stone-400 font-serif">Dificuldade:</span>
+            <button
+              onClick={() => {
+                audio.playClick();
+                setShowDifficultyModal(true);
+              }}
+              className="px-3 py-1 rounded-lg border text-xs font-semibold hover:brightness-125 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+              style={{
+                color: DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'].color,
+                borderColor: `${DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'].color}66`,
+                backgroundColor: `${DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'].color}18`,
+              }}
+            >
+              <span>{DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'].badge}</span>
+              <span className="text-[10px] text-stone-400">⚙️ Alterar</span>
+            </button>
+          </div>
+
           {/* Start CTA Button */}
           <button
             onClick={() => {
@@ -806,13 +847,14 @@ export default function App() {
   // MAIN GAME SHELL (PLAYING / PAUSED / VICTORY)
   // -------------------------------------------------------------
   const { resources, warehouseCapacity, dungeonProgress, hero } = gameState;
+  const currentDiffConfig = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
 
   return (
     <div className="relative w-screen h-screen bg-[#12100e] text-[#e5dfd8] flex flex-col overflow-hidden select-none">
       {/* 1. TOP STATUS BAR (Low-Occlusion Perimeter Status Cluster) */}
       <header className="h-14 bg-[#181410]/95 border-b border-amber-950/60 px-4 flex items-center justify-between z-20 gap-4">
         {/* Left: Brand Wordmark */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <span className="font-cinzel font-bold text-amber-200 tracking-wide text-sm whitespace-nowrap">
             O Poço Ancestral
           </span>
@@ -822,6 +864,26 @@ export default function App() {
           <span className="text-xs text-stone-400 hidden sm:inline">
             Andar {dungeonProgress.highestFloorCleared}/100
           </span>
+          <span className="text-stone-500 text-xs hidden sm:inline" aria-hidden="true">
+            ·
+          </span>
+          {/* Difficulty Badge Button */}
+          <button
+            onClick={() => {
+              audio.playClick();
+              setShowDifficultyModal(true);
+            }}
+            className="px-2 py-0.5 rounded-md border text-xs font-semibold hover:brightness-125 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+            style={{
+              color: currentDiffConfig.color,
+              borderColor: `${currentDiffConfig.color}66`,
+              backgroundColor: `${currentDiffConfig.color}18`,
+            }}
+            title="Alterar Dificuldade do Jogo (Fácil, Médio, Difícil, Hard, Hard Master)"
+          >
+            <span>{currentDiffConfig.badge}</span>
+            <span className="text-[10px] opacity-75">⚙️</span>
+          </button>
         </div>
 
         {/* Center: Live Resource Counters (Tabular Numerals) */}
@@ -963,6 +1025,7 @@ export default function App() {
             onSealShardFound={handleSealShardFound}
             onRecoverMedallion={handleRecoverMedallion}
             onUsePotion={handleUsePotion}
+            onOpenDifficultyModal={() => setShowDifficultyModal(true)}
           />
         </div>
       </main>
@@ -1116,11 +1179,20 @@ export default function App() {
       </footer>
 
       {/* 4. MODALS */}
+      {showDifficultyModal && (
+        <DifficultyModal
+          currentDifficulty={gameState.difficulty || 'medium'}
+          onSelectDifficulty={handleSelectDifficulty}
+          onClose={() => setShowDifficultyModal(false)}
+        />
+      )}
+
       {showExecutiveDashboard && (
         <ExecutiveDashboardModal
           gameState={gameState}
           onClose={() => setShowExecutiveDashboard(false)}
           onToggleDecree={handleToggleDecree}
+          onOpenDifficultyModal={() => setShowDifficultyModal(true)}
         />
       )}
 

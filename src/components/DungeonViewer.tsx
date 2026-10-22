@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GameState, DungeonMonster, PotionType } from '../types/game';
-import { DUNGEONS_DATA, RELICS_DATA } from '../data/gameData';
+import { DUNGEONS_DATA, RELICS_DATA, DIFFICULTY_CONFIGS } from '../data/gameData';
 import { audio } from '../utils/audio';
 
 interface DungeonViewerProps {
@@ -13,6 +13,7 @@ interface DungeonViewerProps {
   onSealShardFound: (shardIndex: number) => void;
   onRecoverMedallion: () => void;
   onUsePotion: (potionType: PotionType) => void;
+  onOpenDifficultyModal?: () => void;
 }
 
 export const DungeonViewer: React.FC<DungeonViewerProps> = ({
@@ -24,6 +25,7 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
   onSealShardFound,
   onRecoverMedallion,
   onUsePotion,
+  onOpenDifficultyModal,
 }) => {
   const { dungeonProgress, hero, potions, autoConsumePotion } = gameState;
   const currentDungeon = DUNGEONS_DATA.find((d) => d.id === dungeonProgress.activeDungeonId) || DUNGEONS_DATA[0];
@@ -107,9 +109,12 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
     const names = monsterNamesByDungeon[dungeonId] || monsterNamesByDungeon[1];
     const name = isBoss ? names.boss : names.normal[Math.floor(Math.random() * names.normal.length)];
 
-    const maxHp = Math.round(75 + baseMult * 45 + (isBoss ? baseMult * 85 : 0));
-    const attack = Math.round(10 + baseMult * 5.2 + (isBoss ? 22 : 0));
+    const diffConfig = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
+
+    const maxHp = Math.round((75 + baseMult * 45 + (isBoss ? baseMult * 85 : 0)) * diffConfig.monsterHpMult);
+    const attack = Math.round((10 + baseMult * 5.2 + (isBoss ? 22 : 0)) * diffConfig.monsterDmgMult);
     const defense = Math.round(4 + baseMult * 2.8);
+    const dropExp = Math.round(25 + baseMult * 14 * (isBoss ? 4 : 1) * diffConfig.expBonusMult);
 
     return {
       name,
@@ -120,20 +125,21 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
       speed: 1,
       isBoss,
       color: currentDungeon.themeColor,
-      dropExp: Math.round(25 + baseMult * 14 * (isBoss ? 4 : 1)),
+      dropExp,
     };
   };
 
-  // Initialize or respawn monster when floor changes
+  // Initialize or respawn monster when floor or difficulty changes
   useEffect(() => {
     const newMonster = spawnMonster(dungeonProgress.activeDungeonId, dungeonProgress.activeFloor);
     setMonster(newMonster);
+    const diffCfg = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
     setCombatLogs((prev) => [
-      `Entrando no Andar ${dungeonProgress.activeFloor} (${globalFloor}/100) de "${currentDungeon.name}".`,
+      `Entrando no Andar ${dungeonProgress.activeFloor} (${globalFloor}/100) de "${currentDungeon.name}" [${diffCfg.name}].`,
       `Um perigoso ${newMonster.name}${newMonster.isBoss ? ' [CHEFE DE ANDAR]' : ''} surge das sombras!`,
       ...prev.slice(0, 15),
     ]);
-  }, [dungeonProgress.activeDungeonId, dungeonProgress.activeFloor]);
+  }, [dungeonProgress.activeDungeonId, dungeonProgress.activeFloor, gameState.difficulty]);
 
   // Player clicks "Luz de Clara" active skill
   const handleUseMedallionSkill = () => {
@@ -224,7 +230,10 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
         // Check relic discovery chance
         const dungeonRelics = RELICS_DATA.filter((r) => r.dungeonId === dungeonProgress.activeDungeonId);
         const undiscovered = dungeonRelics.filter((r) => !gameState.discoveredRelicIds.includes(r.id));
-        if (undiscovered.length > 0 && Math.random() < 0.5) {
+        const diffCfg = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
+        const relicChance = Math.min(0.5 + diffCfg.relicChanceBonus, 0.95);
+
+        if (undiscovered.length > 0 && Math.random() < relicChance) {
           const found = undiscovered[0];
           onRelicFound(found.id);
           audio.playRelicFound();
@@ -280,11 +289,18 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
         if (stoneBuffHits > 0) setStoneBuffHits((prev) => Math.max(prev - 1, 0));
 
         const effectiveDef = hero.defense + defenseBonus;
-        const mDmg = Math.max(Math.round(monster.attack - effectiveDef * 0.45 + Math.random() * 4), 2);
+        // Check monster crit on hard modes
+        const isMonsterCrit =
+          (gameState.difficulty === 'hard' && Math.random() < 0.1) ||
+          (gameState.difficulty === 'hard_core' && Math.random() < 0.18) ||
+          (gameState.difficulty === 'hard_master' && Math.random() < 0.28);
+        const critMult = isMonsterCrit ? 1.5 : 1.0;
+
+        const mDmg = Math.max(Math.round((monster.attack * critMult) - effectiveDef * 0.45 + Math.random() * 4), 2);
         const newHeroHp = Math.max(heroHpRef.current - mDmg, 0);
         onUpdateHeroHp(newHeroHp);
 
-        setDamageNumber({ text: `-${mDmg}`, isHero: true });
+        setDamageNumber({ text: isMonsterCrit ? `💥 -${mDmg} CRÍTICO!` : `-${mDmg}`, isHero: true, isCrit: isMonsterCrit });
         setTimeout(() => setDamageNumber(null), 600);
 
         if (newHeroHp <= 0) {
@@ -301,23 +317,47 @@ export const DungeonViewer: React.FC<DungeonViewerProps> = ({
     }, 1700);
 
     return () => clearInterval(interval);
-  }, [monster, gameState.dungeonProgress.inCombat, hero.attack, hero.defense, hero.critChance, hero.maxHp, flameBuffHits, stoneBuffHits, autoConsumePotion, potions.healing_herb]);
+  }, [monster, gameState.dungeonProgress.inCombat, hero.attack, hero.defense, hero.critChance, hero.maxHp, flameBuffHits, stoneBuffHits, autoConsumePotion, potions.healing_herb, gameState.difficulty]);
+
+  const activeDiffConfig = DIFFICULTY_CONFIGS[gameState.difficulty || 'medium'];
 
   return (
     <div className="flex flex-col h-full bg-[#161310] text-[#e5dfd8] select-none border-l border-amber-950/40">
       {/* Top Header of Dungeon */}
       <div className="p-4 border-b border-amber-950/40 bg-[#1c1814]/90 flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-cinzel text-lg font-bold text-amber-200">{currentDungeon.name}</span>
             <span className="text-xs text-amber-500/80">· Andar {currentFloor}/10 (Global {globalFloor}/100)</span>
+            {activeDiffConfig.hazardEffect && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-950/70 border border-red-700/50 text-red-300 animate-pulse">
+                {activeDiffConfig.hazardEffect}
+              </span>
+            )}
           </div>
           <p className="text-xs text-stone-400 mt-0.5 line-clamp-1">{currentDungeon.description}</p>
         </div>
 
-        {/* Global Progress */}
+        {/* Difficulty Badge & Global Progress */}
         <div className="flex items-center gap-3">
-          <div className="text-right">
+          <button
+            onClick={() => {
+              audio.playClick();
+              onOpenDifficultyModal?.();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold hover:brightness-125 transition-all cursor-pointer shadow-sm"
+            style={{
+              borderColor: `${activeDiffConfig.color}66`,
+              backgroundColor: `${activeDiffConfig.color}15`,
+              color: activeDiffConfig.color,
+            }}
+            title="Alterar Nível de Dificuldade do Jogo"
+          >
+            <span>{activeDiffConfig.badge}</span>
+            <span className="text-[10px] text-stone-400">⚙️</span>
+          </button>
+
+          <div className="text-right hidden sm:block">
             <span className="text-[11px] uppercase tracking-wider text-amber-500/70 block">Profundidade</span>
             <span className="text-sm font-semibold text-amber-300 tabular-nums">
               Masmorra {dungeonProgress.activeDungeonId}/10

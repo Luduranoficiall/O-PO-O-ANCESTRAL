@@ -210,6 +210,27 @@ export interface VillageDecree {
   costPerMinute: { wood?: number; stone?: number };
 }
 
+// Difficulty Levels (Fácil, Médio, Difícil, Hard, Hard Master)
+export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'hard_core' | 'hard_master';
+
+export interface DifficultyConfig {
+  id: DifficultyLevel;
+  name: string;
+  tagline: string;
+  badge: string;
+  color: string;
+  borderColor: string;
+  bgColor: string;
+  monsterHpMult: number;
+  monsterDmgMult: number;
+  monsterSpeedMult: number;
+  expBonusMult: number;
+  relicChanceBonus: number;
+  resourceYieldMult: number;
+  description: string;
+  hazardEffect?: string;
+}
+
 // Named Humanized Specialists in the Tavern
 export interface PioneerSpecialist {
   id: string;
@@ -227,6 +248,9 @@ export interface GameState {
   version: number;
   lastSavedAt: number;
   gameStarted: boolean;
+
+  // Difficulty Mode
+  difficulty: DifficultyLevel;
 
   // Resources
   resources: {
